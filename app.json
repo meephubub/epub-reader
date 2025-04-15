@@ -1,28 +1,49 @@
 {
   "expo": {
-    "name": "epub-reader",
-    "slug": "epub-reader",
+    "name": "ePub Reader",
+    "slug": "expo-epub-reader",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "LSSupportsOpeningDocumentsInPlace": true,
+        "UIFileSharingEnabled": true,
+        "UIDocumentPickerUsageDescription": "This app needs access to files so you can import ePub books.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.thebettersam1.expoepubreader"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-asset"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7f57ebcc-0d3d-4cd9-b479-bd04c9b2e1fd"
+      }
     }
   }
 }
