@@ -1,0 +1,51 @@
+name: EAS iOS Release Build
+
+on:
+  push:
+    tags:
+      - "v*" # triggers on tags like v1.0.0
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: "yarn"
+
+      - name: Install dependencies with Yarn
+        run: yarn install --frozen-lockfile
+
+      - name: Install EAS CLI globally
+        run: yarn global add eas-cli
+
+      - name: Cache EAS CLI downloads (optional)
+        uses: actions/cache@v3
+        with:
+          path: ~/.expo
+          key: eas-cache-${{ runner.os }}
+
+      - name: Run EAS build for iOS (preview profile)
+        run: eas build --platform ios --profile preview --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Download build artifacts
+        run: |
+          mkdir -p dist
+          eas build:download --platform ios --output=dist
+
+      - name: Create GitHub Release and upload .ipa
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref }}
+          files: dist/*.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
