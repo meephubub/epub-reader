@@ -31,6 +31,8 @@
       },
       "permissions": [
         "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ]
     },
@@ -40,10 +42,17 @@
     "plugins": [
       "expo-asset"
     ],
+    "newArchEnabled": true,
     "extra": {
       "eas": {
         "projectId": "7f57ebcc-0d3d-4cd9-b479-bd04c9b2e1fd"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/7f57ebcc-0d3d-4cd9-b479-bd04c9b2e1fd"
     }
   }
 }
