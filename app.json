@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "ePub Reader",
+    "owner": "thebettersam1",
     "slug": "expo-epub-reader",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,9 +12,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -39,9 +38,7 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      "expo-asset"
-    ],
+    "plugins": ["expo-asset"],
     "newArchEnabled": true,
     "extra": {
       "eas": {
