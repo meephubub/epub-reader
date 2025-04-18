@@ -982,7 +982,7 @@ const ReaderScreen = ({ route, navigation }) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "llama3.2:1b",
+          model: "tinyllama",
           prompt: `Summarize the following extract from the satanic verses by salman rushdie in 1-2 sentences. Only return the summary, no other text. make it short and sweet : ${currentPageText}`,
           stream: false,
         }),
@@ -2104,7 +2104,7 @@ const ReaderScreen = ({ route, navigation }) => {
     const preloadPages = () => {
       const currentPageIndex = Math.round(Math.abs(parseFloat(content.style.transform.replace('translateX(', '').replace('%)', '')) || 0) / 100);
       const pages = content.children;
-      
+
       // Preload next 2 pages
       for (let i = 1; i <= 2; i++) {
         if (currentPageIndex + i < pages.length) {
@@ -2115,7 +2115,7 @@ const ReaderScreen = ({ route, navigation }) => {
           }
         }
       }
-      
+
       // Preload previous 2 pages
       for (let i = 1; i <= 2; i++) {
         if (currentPageIndex - i >= 0) {
