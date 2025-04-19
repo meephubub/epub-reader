@@ -38,6 +38,7 @@ import * as Haptics from "expo-haptics"; // Import Haptics for tactile feedback
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 
+const GROQ_API_KEY = "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";
 // Components
 const Stack = createStackNavigator();
 const { width, height } = Dimensions.get("window");
@@ -937,7 +938,21 @@ const ReaderScreen = ({ route, navigation }) => {
 
     // Extract the text to have it available
     webViewRef.current?.injectJavaScript(`
-      extractCurrentPageText(${currentPage});
+      function extractCurrentPageText(pageIndex) {
+        const pages = document.querySelectorAll('.page');
+        if (pages.length > pageIndex) {
+          const page = pages[pageIndex];
+          const text = page.innerText || page.textContent;
+          return text.trim();
+        }
+        return '';
+      }
+      
+      const text = extractCurrentPageText(${currentPage});
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: "pageText",
+        text: text
+      }));
       true;
     `);
   };
@@ -969,7 +984,7 @@ const ReaderScreen = ({ route, navigation }) => {
 
   // Generate AI summary only when TL;DR tab is opened
   const generateAiSummary = async () => {
-    if (!currentPageText.trim()) {
+    if (!currentPageText || !currentPageText.trim()) {
       setAiSummary("No text available to summarize.");
       return;
     }
@@ -980,11 +995,10 @@ const ReaderScreen = ({ route, navigation }) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // Optional: include an API key if you have one
-          // "Authorization": `Bearer ${GROQ_API_KEY}`,
+          "Authorization": `Bearer ${GROQ_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "mixtral-8x7b-32768",
+          model: "deepseek-r1-distill-llama-70b",
           messages: [
             {
               role: "system",
@@ -992,50 +1006,41 @@ const ReaderScreen = ({ route, navigation }) => {
             },
             {
               role: "user",
-              content: `Summarize the following extract from *The Satanic Verses* by Salman Rushdie in 1-2 sentences. Only return the summary — no extra commentary. Make it short and sweet:\n\n${currentPageText}`,
+              content: `Summarize the following text in 1-2 sentences. Only return the summary — no extra commentary. Make it short and sweet:\n\n${currentPageText}`,
             },
           ],
-          temperature: 0.5,
-          stream: true,
+          temperature: 0.7,
+          max_tokens: 150,
+          top_p: 1,
+          frequency_penalty: 0,
+          presence_penalty: 0,
         }),
       });
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let summary = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') break;
-            
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.choices[0].delta.content) {
-                summary += parsed.choices[0].delta.content;
-                setAiSummary(summary);
-              }
-            } catch (e) {
-              console.error('Error parsing stream data:', e);
-            }
-          }
-        }
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("API Error:", errorData);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      // Cache the final summary
+      const data = await response.json();
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error("Invalid response format from API");
+      }
+
+      // Remove any text surrounded by <think> tags
+      const summary = data.choices[0].message.content
+        .replace(/<think>.*?<\/think>/gs, '')  // Remove think tags and their content
+        .trim();
+
+      // Cache the summary
       const cacheKey = `${currentChapter}-${currentPage}`;
       setSummaryCache((prev) => ({
         ...prev,
         [cacheKey]: summary,
       }));
 
+      setAiSummary(summary);
     } catch (error) {
       console.error("Error generating summary:", error);
       setAiSummary("Failed to generate summary. Please try again.");
@@ -1730,7 +1735,16 @@ const ReaderScreen = ({ route, navigation }) => {
         console.log("Page changed to:", data.page, "Success:", data.success);
       } else if (data.type === "pageText") {
         // Handle extracted page text
-        setCurrentPageText(data.text);
+        console.log("Received page text:", data.text);
+        if (data.text && data.text.trim()) {
+          setCurrentPageText(data.text);
+          // Generate summary after we have the text
+          setTimeout(() => {
+            generateAiSummary();
+          }, 0);
+        } else {
+          setAiSummary("No text available to summarize.");
+        }
       }
     } catch (error) {
       console.error("Error parsing WebView message:", error);
@@ -1847,6 +1861,38 @@ const ReaderScreen = ({ route, navigation }) => {
           hyphens: auto;
           line-height: 1.6;
           text-align: justify;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+        .page * {
+          max-width: 100%;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+        }
+        .page img {
+          max-width: 100%;
+          height: auto;
+          display: block;
+          margin: 1em auto;
+        }
+        .page p {
+          margin-bottom: 1em;
+          text-align: justify;
+          letter-spacing: -0.01em;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+          hyphens: auto;
+          line-height: 1.6;
+          orphans: 2;
+          widows: 2;
+        }
+        .page h1, .page h2, .page h3, .page h4, .page h5, .page h6 {
+          line-height: 1.3;
+          font-weight: 600;
+          margin-top: 1.5em;
+          margin-bottom: 0.5em;
+          page-break-after: avoid;
+          page-break-inside: avoid;
         }
         .page::after {
           content: '';
@@ -1856,6 +1902,7 @@ const ReaderScreen = ({ route, navigation }) => {
           right: 0;
           height: 40px;
           background: linear-gradient(to bottom, transparent, var(--page-bg));
+          pointer-events: none;
         }
         .light-theme .page::after {
           --page-bg: #FFFFFF;
