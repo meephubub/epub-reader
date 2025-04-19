@@ -976,33 +976,66 @@ const ReaderScreen = ({ route, navigation }) => {
 
     setIsGeneratingSummary(true);
     try {
-      const response = await fetch(`${ollamaUrl}/api/generate`, {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          // Optional: include an API key if you have one
+          // "Authorization": `Bearer ${GROQ_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "tinyllama",
-          prompt: `Summarize the following extract from the satanic verses by salman rushdie in 1-2 sentences. Only return the summary, no other text. make it short and sweet : ${currentPageText}`,
-          stream: false,
+          model: "mixtral-8x7b-32768",
+          messages: [
+            {
+              role: "system",
+              content: "You are a helpful assistant that summarizes literature concisely.",
+            },
+            {
+              role: "user",
+              content: `Summarize the following extract from *The Satanic Verses* by Salman Rushdie in 1-2 sentences. Only return the summary — no extra commentary. Make it short and sweet:\n\n${currentPageText}`,
+            },
+          ],
+          temperature: 0.5,
+          stream: true,
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to generate summary");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let summary = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') break;
+            
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.choices[0].delta.content) {
+                summary += parsed.choices[0].delta.content;
+                setAiSummary(summary);
+              }
+            } catch (e) {
+              console.error('Error parsing stream data:', e);
+            }
+          }
+        }
       }
 
-      const data = await response.json();
-      const summary = data.response.trim();
-
-      // Cache the summary
+      // Cache the final summary
       const cacheKey = `${currentChapter}-${currentPage}`;
       setSummaryCache((prev) => ({
         ...prev,
         [cacheKey]: summary,
       }));
 
-      setAiSummary(summary);
     } catch (error) {
       console.error("Error generating summary:", error);
       setAiSummary("Failed to generate summary. Please try again.");
