@@ -20,9 +20,6 @@ import {
   Platform,
   TextInput,
   KeyboardAvoidingView,
-  useColorScheme,
-  Pressable,
-  Vibration,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
@@ -35,8 +32,6 @@ import JSZip from "jszip";
 import { parseString } from "xml2js";
 import { Audio } from "expo-av"; // Import Audio from expo-av for audio playback
 import * as Haptics from "expo-haptics"; // Import Haptics for tactile feedback
-import * as Sharing from "expo-sharing";
-import * as MediaLibrary from "expo-media-library";
 
 const GROQ_API_KEY = "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";
 // Components
@@ -403,7 +398,7 @@ const LibraryScreen = ({ navigation }) => {
       <View style={[styles.centeredContainer, isDark && styles.darkBackground]}>
         <ActivityIndicator
           size="large"
-          color={isDark ? "#60A5FA" : "#007AFF"}
+          color={isDark ? "#4A4A4A" : "#4A4A4A"}
         />
       </View>
     );
@@ -423,7 +418,7 @@ const LibraryScreen = ({ navigation }) => {
             <Ionicons
               name={isDark ? "sunny" : "moon"}
               size={22}
-              color={isDark ? "#60A5FA" : "#007AFF"}
+              color={isDark ? "#60A5FA" : "#4A4A4A"}
             />
           </TouchableOpacity>
           {books.length > 0 && (
@@ -434,7 +429,7 @@ const LibraryScreen = ({ navigation }) => {
               <Ionicons
                 name={showSearch ? "close" : "search"}
                 size={22}
-                color={isDark ? "#60A5FA" : "#007AFF"}
+                color={isDark ? "#60A5FA" : "#4A4A4A"}
               />
             </TouchableOpacity>
           )}
@@ -445,7 +440,7 @@ const LibraryScreen = ({ navigation }) => {
             <Ionicons
               name="add"
               size={24}
-              color={isDark ? "#60A5FA" : "#007AFF"}
+              color={isDark ? "#60A5FA" : "#4A4A4A"}
             />
           </TouchableOpacity>
         </View>
@@ -474,7 +469,7 @@ const LibraryScreen = ({ navigation }) => {
             <Ionicons
               name="time-outline"
               size={24}
-              color={isDark ? "#60A5FA" : "#007AFF"}
+              color={isDark ? "#60A5FA" : "#4A4A4A"}
             />
             <Text style={[styles.statValue, isDark && styles.darkText]}>
               {formatReadingTime(readingStats.totalReadingTime)}
@@ -487,7 +482,7 @@ const LibraryScreen = ({ navigation }) => {
             <Ionicons
               name="flame-outline"
               size={24}
-              color={isDark ? "#60A5FA" : "#007AFF"}
+              color={isDark ? "#60A5FA" : "#4A4A4A"}
             />
             <Text style={[styles.statValue, isDark && styles.darkText]}>
               {readingStats.streakDays}
@@ -877,8 +872,9 @@ const ReaderScreen = ({ route, navigation }) => {
     Animated.spring(menuSlideAnim, {
       toValue: height,
       useNativeDriver: true,
-      tension: 50,
-      friction: 7,
+      tension: 60,
+      friction: 10,
+      velocity: 0.3,
     }).start(() => {
       setShowQuickMenu(false);
     });
@@ -919,8 +915,9 @@ const ReaderScreen = ({ route, navigation }) => {
     Animated.spring(menuSlideAnim, {
       toValue: height,
       useNativeDriver: true,
-      tension: 50,
-      friction: 7,
+      tension: 60,
+      friction: 10,
+      velocity: 0.3,
     }).start(() => {
       setShowTldrMenu(false);
     });
@@ -947,7 +944,7 @@ const ReaderScreen = ({ route, navigation }) => {
         }
         return '';
       }
-      
+
       const text = extractCurrentPageText(${currentPage});
       window.ReactNativeWebView.postMessage(JSON.stringify({
         type: "pageText",
@@ -991,31 +988,35 @@ const ReaderScreen = ({ route, navigation }) => {
 
     setIsGeneratingSummary(true);
     try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${GROQ_API_KEY}`,
+      const response = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${GROQ_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a helpful assistant that summarizes literature concisely.",
+              },
+              {
+                role: "user",
+                content: `Summarize the following text in 1-2 sentences. Only return the summary — no extra commentary. Make it short and sweet:\n\n${currentPageText}`,
+              },
+            ],
+            temperature: 0.7,
+            max_tokens: 150,
+            top_p: 1,
+            frequency_penalty: 0,
+            presence_penalty: 0,
+          }),
         },
-        body: JSON.stringify({
-          model: "deepseek-r1-distill-llama-70b",
-          messages: [
-            {
-              role: "system",
-              content: "You are a helpful assistant that summarizes literature concisely.",
-            },
-            {
-              role: "user",
-              content: `Summarize the following text in 1-2 sentences. Only return the summary — no extra commentary. Make it short and sweet:\n\n${currentPageText}`,
-            },
-          ],
-          temperature: 0.7,
-          max_tokens: 150,
-          top_p: 1,
-          frequency_penalty: 0,
-          presence_penalty: 0,
-        }),
-      });
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -1029,8 +1030,9 @@ const ReaderScreen = ({ route, navigation }) => {
       }
 
       // Remove any text surrounded by <think> tags
+      console.log("Summary generated", data.choices[0].message.content);
       const summary = data.choices[0].message.content
-        .replace(/<think>.*?<\/think>/gs, '')  // Remove think tags and their content
+        .replace(/<think>[\s\S]*?<\/think>/g, "") // Remove think tags and their content
         .trim();
 
       // Cache the summary
@@ -1540,22 +1542,60 @@ const ReaderScreen = ({ route, navigation }) => {
             // Process content to make it work in WebView
             let processedContent = content;
 
+            // Add basic CSS to ensure content displays properly
+            processedContent = `
+              <style>
+                body {
+                  margin: 0;
+                  padding: 16px;
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                  line-height: 1.6;
+                  color: ${theme === "dark" ? "#ffffff" : "#000000"};
+                  background-color: ${theme === "dark" ? "#1a1a1a" : "#ffffff"};
+                }
+                img {
+                  max-width: 100%;
+                  height: auto;
+                }
+                p {
+                  margin: 1em 0;
+                }
+                h1, h2, h3, h4, h5, h6 {
+                  margin: 1.5em 0 0.5em;
+                }
+              </style>
+              ${processedContent}
+            `;
+
             // Extract images and save them locally
             const imgRegex = /<img[^>]+src="([^">]+)"/g;
             let match;
             while ((match = imgRegex.exec(content)) !== null) {
               const imgPath = match[1];
               if (!imgPath.startsWith("http")) {
-                // Resolve relative path
-                const imgFullPath = imgPath.startsWith("/")
-                  ? imgPath.substring(1)
-                  : opfDir
-                    ? `${opfDir}/${imgPath}`
-                    : imgPath;
-
                 try {
-                  // Extract image
-                  const imgFile = contents.file(imgFullPath);
+                  // Resolve relative path
+                  const imgFullPath = imgPath.startsWith("/")
+                    ? imgPath.substring(1)
+                    : opfDir
+                      ? `${opfDir}/${imgPath}`
+                      : imgPath;
+
+                  // Try different variations of the path
+                  const possiblePaths = [
+                    imgFullPath,
+                    imgFullPath.replace(/%20/g, " "),
+                    imgFullPath.replace(/ /g, "%20"),
+                    imgFullPath.toLowerCase(),
+                    imgFullPath.toUpperCase(),
+                  ];
+
+                  let imgFile = null;
+                  for (const path of possiblePaths) {
+                    imgFile = contents.file(path);
+                    if (imgFile) break;
+                  }
+
                   if (imgFile) {
                     const imgData = await imgFile.async("base64");
                     // Replace with data URL
@@ -1563,18 +1603,34 @@ const ReaderScreen = ({ route, navigation }) => {
                       ? "png"
                       : imgPath.endsWith(".jpg") || imgPath.endsWith(".jpeg")
                         ? "jpeg"
-                        : "png";
+                        : imgPath.endsWith(".gif")
+                          ? "gif"
+                          : "png";
                     const dataUrl = `data:image/${imgType};base64,${imgData}`;
                     processedContent = processedContent.replace(
-                      imgPath,
+                      new RegExp(
+                        imgPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+                        "g",
+                      ),
                       dataUrl,
                     );
                   }
                 } catch (e) {
-                  console.error(`Error processing image ${imgPath}:`, e);
+                  console.warn(`Error processing image ${imgPath}:`, e);
                 }
               }
             }
+
+            // Clean up any remaining relative paths in href attributes
+            processedContent = processedContent.replace(
+              /href="([^"]+)"/g,
+              (match, href) => {
+                if (!href.startsWith("http") && !href.startsWith("#")) {
+                  return `href="#"`;
+                }
+                return match;
+              },
+            );
 
             return { content: processedContent, title };
           }),
@@ -1754,7 +1810,7 @@ const ReaderScreen = ({ route, navigation }) => {
   if (loading) {
     return (
       <View style={styles.centeredContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color="#4A4A4A" />
       </View>
     );
   }
@@ -1782,7 +1838,7 @@ const ReaderScreen = ({ route, navigation }) => {
           padding: 0;
           width: 100%;
           height: 100%;
-          overflow: hidden;
+          overflow: auto;
           -webkit-overflow-scrolling: none;
           overscroll-behavior: none;
         }
@@ -1813,7 +1869,7 @@ const ReaderScreen = ({ route, navigation }) => {
           flex-direction: column;
           height: 100vh;
           width: 100vw;
-          overflow: hidden;
+          overflow: auto;
           position: relative;
         }
         #chapter-title {
@@ -1834,7 +1890,7 @@ const ReaderScreen = ({ route, navigation }) => {
           position: relative;
           height: calc(100vh - 120px);
           width: 100%;
-          overflow: hidden;
+          overflow: auto;
           position: relative;
         }
         #book-content {
@@ -1853,7 +1909,7 @@ const ReaderScreen = ({ route, navigation }) => {
           flex: 0 0 100%;
           padding: 20px;
           box-sizing: border-box;
-          overflow: hidden;
+          overflow: auto;
           opacity: 1;
           transition: none;
           word-wrap: break-word;
@@ -2032,193 +2088,216 @@ const ReaderScreen = ({ route, navigation }) => {
     content.className = 'transition-' + effect;
   }
 
-  // Parse and paginate the content - FIXED VERSION
-  function paginateContent() {
-    const contentWrapper = document.getElementById('book-content-wrapper');
-    const content = document.getElementById('book-content');
+  // Parse and paginate the content - IMPROVED VERSION
+function paginateContent() {
+  const contentWrapper = document.getElementById('book-content-wrapper');
+  const content = document.getElementById('book-content');
 
-    // Clear existing content
-    content.innerHTML = '';
+  // Clear existing content
+  content.innerHTML = '';
 
-    // Get the raw HTML content
-    const rawContent = \`${chapters[currentChapter]}\`;
+  // Get the raw HTML content
+  const rawContent = \`${chapters[currentChapter]}\`;
 
-    // Create a temporary container to measure content
-    const tempContainer = document.createElement('div');
-    tempContainer.style.width = contentWrapper.offsetWidth + 'px';
-    tempContainer.style.position = 'absolute';
-    tempContainer.style.visibility = 'hidden';
-    tempContainer.style.padding = '0 20px';
-    tempContainer.style.boxSizing = 'border-box';
-    tempContainer.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-    tempContainer.style.fontSize = '${fontSize}%';
-    tempContainer.style.lineHeight = '1.6';
-    document.body.appendChild(tempContainer);
+  // Create a temporary container to measure content
+  const tempContainer = document.createElement('div');
+  tempContainer.style.width = contentWrapper.offsetWidth + 'px';
+  tempContainer.style.position = 'absolute';
+  tempContainer.style.visibility = 'hidden';
+  tempContainer.style.padding = '0 20px';
+  tempContainer.style.boxSizing = 'border-box';
+  tempContainer.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  tempContainer.style.fontSize = '${fontSize}%';
+  tempContainer.style.lineHeight = '1.6';
+  document.body.appendChild(tempContainer);
 
-    // Parse the HTML content
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(rawContent, 'text/html');
+  // Parse the HTML content
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(rawContent, 'text/html');
 
-    // Get all elements from the parsed document
-    let elements = Array.from(doc.body.children);
+  // Get all elements from the parsed document
+  let elements = Array.from(doc.body.children);
 
-    // If no elements (plain text), wrap in paragraph
-    if (elements.length === 0 && doc.body.textContent.trim()) {
-      const p = document.createElement('p');
-      p.textContent = doc.body.textContent.trim();
-      elements = [p];
+  // If no elements (plain text), wrap in paragraph
+  if (elements.length === 0 && doc.body.textContent.trim()) {
+    const p = document.createElement('p');
+    p.textContent = doc.body.textContent.trim();
+    elements = [p];
+  }
+
+  // For flattened EPUBs, ensure proper structure
+  if (elements.length === 1 && elements[0].tagName === 'BODY') {
+    elements = Array.from(elements[0].children);
+  }
+
+  // Handle case where content is in HTML tag
+  if (elements.length === 1 && elements[0].tagName === 'HTML') {
+    const htmlBody = elements[0].querySelector('body');
+    if (htmlBody) {
+      elements = Array.from(htmlBody.children);
+    }
+  }
+
+  // Create pages
+  let currentPage = document.createElement('div');
+  currentPage.className = 'page';
+  content.appendChild(currentPage);
+
+  let pageHeight = contentWrapper.offsetHeight - 40; // Subtract padding
+  let currentHeight = 0;
+
+  // Process each element
+  for (let i = 0; i < elements.length; i++) {
+    const element = elements[i];
+
+    // Skip empty elements
+    if (element.textContent.trim() === '' && !element.querySelector('img')) {
+      continue;
     }
 
-    // For flattened EPUBs, ensure proper structure
-    if (elements.length === 1 && elements[0].tagName === 'BODY') {
-      elements = Array.from(elements[0].children);
-    }
+    // Clone the element to measure it
+    const clonedElement = element.cloneNode(true);
+    tempContainer.appendChild(clonedElement);
+    const elementHeight = clonedElement.offsetHeight;
+    tempContainer.removeChild(clonedElement);
 
-    // Create pages
-    let currentPage = document.createElement('div');
-    currentPage.className = 'page';
-    content.appendChild(currentPage);
-
-    let pageHeight = contentWrapper.offsetHeight - 40; // Subtract padding
-    let currentHeight = 0;
-
-    // Process each element
-    for (let i = 0; i < elements.length; i++) {
-      const element = elements[i];
-
-      // Clone the element to measure it
-      const clonedElement = element.cloneNode(true);
-      tempContainer.appendChild(clonedElement);
-      const elementHeight = clonedElement.offsetHeight;
-      tempContainer.removeChild(clonedElement);
-
-      // Special handling for large elements (like images or tables)
-      if (elementHeight > pageHeight * 0.9) {
-        // If current page already has content, move to next page
-        if (currentHeight > 0) {
-          currentPage = document.createElement('div');
-          currentPage.className = 'page';
-          content.appendChild(currentPage);
-          currentHeight = 0;
-        }
-
-        // Add the large element to its own page
-        currentPage.appendChild(element.cloneNode(true));
-
-        // Create a new page for subsequent content
+    // Special handling for large elements (like images or tables)
+    if (elementHeight > pageHeight * 0.9) {
+      // If current page already has content, move to next page
+      if (currentHeight > 0) {
         currentPage = document.createElement('div');
         currentPage.className = 'page';
         content.appendChild(currentPage);
         currentHeight = 0;
-        continue;
       }
 
-      // Check if element fits in current page
-      if (currentHeight + elementHeight > pageHeight) {
-        // If it's a paragraph and too big, try to split it
-        if (element.tagName === 'P' || element.tagName === 'DIV') {
-          const splitResult = splitParagraph(element, pageHeight - currentHeight, tempContainer);
+      // Add the large element to its own page
+      currentPage.appendChild(element.cloneNode(true));
 
-          // Add first part to current page
-          if (splitResult.firstPart) {
-            currentPage.appendChild(splitResult.firstPart);
+      // Create a new page for subsequent content
+      currentPage = document.createElement('div');
+      currentPage.className = 'page';
+      content.appendChild(currentPage);
+      currentHeight = 0;
+      continue;
+    }
+
+    // Check if element fits in current page
+    if (currentHeight + elementHeight > pageHeight) {
+      // If it's a paragraph and too big, try to split it
+      if (element.tagName === 'P' || element.tagName === 'DIV') {
+        const splitResult = splitParagraph(element, pageHeight - currentHeight, tempContainer);
+
+        // Add first part to current page
+        if (splitResult.firstPart) {
+          currentPage.appendChild(splitResult.firstPart);
+        }
+
+        // Create a new page for the rest
+        currentPage = document.createElement('div');
+        currentPage.className = 'page';
+        content.appendChild(currentPage);
+        currentHeight = 0;
+
+        // Add second part to new page
+        if (splitResult.secondPart) {
+          // Measure the second part
+          tempContainer.appendChild(splitResult.secondPart);
+          const secondPartHeight = splitResult.secondPart.offsetHeight;
+          tempContainer.removeChild(splitResult.secondPart);
+
+          // If it fits, add it
+          if (secondPartHeight <= pageHeight) {
+            currentPage.appendChild(splitResult.secondPart);
+            currentHeight = secondPartHeight;
+          } else {
+            // If still too big, recursively process it
+            i--; // Process this element again
+            elements[i] = splitResult.secondPart;
           }
-
-          // Create a new page for the rest
-          currentPage = document.createElement('div');
-          currentPage.className = 'page';
-          content.appendChild(currentPage);
-          currentHeight = 0;
-
-          // Add second part to new page
-          if (splitResult.secondPart) {
-            // Measure the second part
-            tempContainer.appendChild(splitResult.secondPart);
-            const secondPartHeight = splitResult.secondPart.offsetHeight;
-            tempContainer.removeChild(splitResult.secondPart);
-
-            // If it fits, add it
-            if (secondPartHeight <= pageHeight) {
-              currentPage.appendChild(splitResult.secondPart);
-              currentHeight = secondPartHeight;
-            } else {
-              // If still too big, recursively process it
-              i--; // Process this element again
-              elements[i] = splitResult.secondPart;
-            }
-          }
-        } else {
-          // Create a new page for non-paragraph elements
-          currentPage = document.createElement('div');
-          currentPage.className = 'page';
-          content.appendChild(currentPage);
-          currentHeight = 0;
-
-          // Add element to new page
-          currentPage.appendChild(element.cloneNode(true));
-          currentHeight += elementHeight;
         }
       } else {
-        // Element fits, add it to current page
+        // Create a new page for non-paragraph elements
+        currentPage = document.createElement('div');
+        currentPage.className = 'page';
+        content.appendChild(currentPage);
+        currentHeight = 0;
+
+        // Add element to new page
         currentPage.appendChild(element.cloneNode(true));
         currentHeight += elementHeight;
       }
+    } else {
+      // Element fits, add it to current page
+      currentPage.appendChild(element.cloneNode(true));
+      currentHeight += elementHeight;
+    }
+  }
+
+  // Clean up
+  document.body.removeChild(tempContainer);
+
+  // Set total pages
+  const totalPages = content.children.length;
+
+  // Handle case where no pages were created
+  if (totalPages === 0) {
+    // Create at least one page with the raw content
+    const fallbackPage = document.createElement('div');
+    fallbackPage.className = 'page';
+    fallbackPage.innerHTML = rawContent;
+    content.appendChild(fallbackPage);
+  }
+
+  // Update page number
+  updatePageNumber(${currentPage + 1}, totalPages || 1);
+
+  // Send page count to React Native
+  window.ReactNativeWebView.postMessage(JSON.stringify({
+    type: 'pageCount',
+    pages: totalPages || 1
+  }));
+
+  // Preload adjacent pages
+  const preloadPages = () => {
+    const currentPageIndex = Math.min(${currentPage}, content.children.length - 1);
+    const pages = content.children;
+
+    // Preload next 2 pages
+    for (let i = 1; i <= 2; i++) {
+      if (currentPageIndex + i < pages.length) {
+        const nextPage = pages[currentPageIndex + i];
+        if (nextPage) {
+          nextPage.style.visibility = 'visible';
+          nextPage.style.opacity = '1';
+        }
+      }
     }
 
-    // Clean up
-    document.body.removeChild(tempContainer);
-
-    // Set total pages
-    const totalPages = content.children.length;
-
-    // Update page number
-    updatePageNumber(${currentPage + 1}, totalPages);
-
-    // Send page count to React Native
-    window.ReactNativeWebView.postMessage(JSON.stringify({
-      type: 'pageCount',
-      pages: totalPages
-    }));
-
-    // Preload adjacent pages
-    const preloadPages = () => {
-      const currentPageIndex = Math.round(Math.abs(parseFloat(content.style.transform.replace('translateX(', '').replace('%)', '')) || 0) / 100);
-      const pages = content.children;
-
-      // Preload next 2 pages
-      for (let i = 1; i <= 2; i++) {
-        if (currentPageIndex + i < pages.length) {
-          const nextPage = pages[currentPageIndex + i];
-          if (nextPage) {
-            nextPage.style.visibility = 'visible';
-            nextPage.style.opacity = '1';
-          }
+    // Preload previous 2 pages
+    for (let i = 1; i <= 2; i++) {
+      if (currentPageIndex - i >= 0) {
+        const prevPage = pages[currentPageIndex - i];
+        if (prevPage) {
+          prevPage.style.visibility = 'visible';
+          prevPage.style.opacity = '1';
         }
       }
+    }
+  };
 
-      // Preload previous 2 pages
-      for (let i = 1; i <= 2; i++) {
-        if (currentPageIndex - i >= 0) {
-          const prevPage = pages[currentPageIndex - i];
-          if (prevPage) {
-            prevPage.style.visibility = 'visible';
-            prevPage.style.opacity = '1';
-          }
-        }
-      }
-    };
+  // Go to current page immediately and preload
+  const safePageIndex = Math.min(${currentPage}, content.children.length - 1);
+  goToPage(safePageIndex, null);
+  preloadPages();
 
-    // Go to current page immediately and preload
-    goToPage(${currentPage}, null);
-    preloadPages();
-
-    // Add preload on page change
-    const originalGoToPage = goToPage;
-    goToPage = function(pageIndex, direction) {
-      originalGoToPage(pageIndex, direction);
-      setTimeout(preloadPages, 100); // Preload after page transition
-    };
-  }
+  // Add preload on page change
+  const originalGoToPage = goToPage;
+  goToPage = function(pageIndex, direction) {
+    originalGoToPage(pageIndex, direction);
+    setTimeout(preloadPages, 100); // Preload after page transition
+  };
+}
 
   // Helper function to split a paragraph across pages
   function splitParagraph(paragraph, availableHeight, tempContainer) {
@@ -2613,7 +2692,7 @@ const ReaderScreen = ({ route, navigation }) => {
           <Ionicons
             name="chevron-back"
             size={24}
-            color={isDark ? "#FFFFFF" : "#007AFF"}
+            color={isDark ? "#FFFFFF" : "#4A4A4A"}
           />
         </TouchableOpacity>
 
@@ -2629,7 +2708,7 @@ const ReaderScreen = ({ route, navigation }) => {
           <Ionicons
             name="list"
             size={24}
-            color={isDark ? "#FFFFFF" : "#007AFF"}
+            color={isDark ? "#FFFFFF" : "#4A4A4A"}
           />
         </TouchableOpacity>
       </View>
@@ -2641,9 +2720,10 @@ const ReaderScreen = ({ route, navigation }) => {
           originWhitelist={["*"]}
           source={{ html: readerHtml }}
           style={styles.webView}
+          scrollEnabled={true}
+          showsVerticalScrollIndicator={true}
           javaScriptEnabled={true}
           onMessage={handleMessage}
-          scrollEnabled={false}
           bounces={false}
           overScrollMode="never"
         />
@@ -2773,7 +2853,7 @@ const ReaderScreen = ({ route, navigation }) => {
                   <Ionicons
                     name={isPlaying ? "pause" : "play"}
                     size={24}
-                    color={readerTheme === "dark" ? "#FFFFFF" : "#007AFF"}
+                    color={readerTheme === "dark" ? "#FFFFFF" : "#4A4A4A"}
                   />
                 </TouchableOpacity>
 
@@ -2787,7 +2867,7 @@ const ReaderScreen = ({ route, navigation }) => {
                   <Ionicons
                     name="folder-open"
                     size={24}
-                    color={readerTheme === "dark" ? "#FFFFFF" : "#007AFF"}
+                    color={readerTheme === "dark" ? "#FFFFFF" : "#4A4A4A"}
                   />
                 </TouchableOpacity>
               </View>
@@ -2836,7 +2916,7 @@ const ReaderScreen = ({ route, navigation }) => {
                   <Ionicons
                     name="search"
                     size={20}
-                    color={readerTheme === "dark" ? "#FFFFFF" : "#007AFF"}
+                    color={readerTheme === "dark" ? "#FFFFFF" : "#4A4A4A"}
                   />
                 </TouchableOpacity>
               </View>
@@ -2859,7 +2939,7 @@ const ReaderScreen = ({ route, navigation }) => {
                       <Ionicons
                         name="chevron-up"
                         size={20}
-                        color={readerTheme === "dark" ? "#FFFFFF" : "#007AFF"}
+                        color={readerTheme === "dark" ? "#FFFFFF" : "#4A4A4A"}
                       />
                     </TouchableOpacity>
 
@@ -2882,7 +2962,7 @@ const ReaderScreen = ({ route, navigation }) => {
                       <Ionicons
                         name="chevron-down"
                         size={20}
-                        color={readerTheme === "dark" ? "#FFFFFF" : "#007AFF"}
+                        color={readerTheme === "dark" ? "#FFFFFF" : "#4A4A4A"}
                       />
                     </TouchableOpacity>
                   </View>
@@ -2938,101 +3018,34 @@ const ReaderScreen = ({ route, navigation }) => {
             >
               TL;DR
             </Text>
-
-            {/* AI Summary */}
-            <View
-              style={[
-                styles.aiSummaryContainer,
-                readerTheme === "dark" && styles.darkCardBg,
-              ]}
-            >
-              {isGeneratingSummary ? (
-                <View style={styles.aiSummaryLoading}>
-                  <ActivityIndicator
-                    size="small"
-                    color={readerTheme === "dark" ? "#FFFFFF" : "#007AFF"}
-                  />
-                  <Text
-                    style={[
-                      styles.aiSummaryLoadingText,
-                      readerTheme === "dark" && styles.darkSubText,
-                    ]}
-                  >
-                    Generating summary...
-                  </Text>
-                </View>
-              ) : (
-                <ScrollView style={styles.aiSummaryContent}>
-                  <Text
-                    style={[
-                      styles.aiSummaryText,
-                      readerTheme === "dark" && styles.darkText,
-                    ]}
-                  >
-                    {aiSummary ||
-                      "Swipe down to generate a summary of the current page."}
-                  </Text>
-                </ScrollView>
-              )}
-
-              <View style={styles.aiSummaryActions}>
-                <TouchableOpacity
-                  style={styles.aiSummaryButton}
-                  onPress={generateAiSummary}
-                  disabled={isGeneratingSummary || !currentPageText}
-                >
-                  <Text style={styles.aiSummaryButtonText}>
-                    {aiSummary ? "Regenerate Summary" : "Generate Summary"}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.aiSettingsButton,
-                    readerTheme === "dark" && styles.darkAudioButton,
-                  ]}
-                  onPress={configureOllamaUrl}
-                >
-                  <Ionicons
-                    name="settings-outline"
-                    size={20}
-                    color={readerTheme === "dark" ? "#FFFFFF" : "#007AFF"}
-                  />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.aiSettingsButton,
-                    readerTheme === "dark" && styles.darkAudioButton,
-                  ]}
-                  onPress={showManualSummaryUpload}
-                >
-                  <Ionicons
-                    name="create-outline"
-                    size={20}
-                    color={readerTheme === "dark" ? "#FFFFFF" : "#007AFF"}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.quickMenuCloseButton,
-                readerTheme === "dark" && styles.darkButton,
-              ]}
-              onPress={hideTldrMenuHandler}
-            >
+            <ScrollView style={styles.tldrTextContainer}>
               <Text
                 style={[
-                  styles.quickMenuCloseText,
-                  readerTheme === "dark" && { color: "#FFFFFF" },
+                  styles.tldrText,
+                  readerTheme === "dark" && styles.darkText,
                 ]}
               >
-                Close
+                {aiSummary ||
+                  "Swipe down to generate a summary of the current page."}
               </Text>
-            </TouchableOpacity>
+            </ScrollView>
           </View>
+          <TouchableOpacity
+            style={[
+              styles.quickMenuCloseButton,
+              readerTheme === "dark" && styles.darkButton,
+            ]}
+            onPress={hideTldrMenuHandler}
+          >
+            <Text
+              style={[
+                styles.quickMenuCloseText,
+                readerTheme === "dark" && { color: "#FFFFFF" },
+              ]}
+            >
+              Close
+            </Text>
+          </TouchableOpacity>
         </Animated.View>
       )}
 
@@ -3337,7 +3350,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F2F2F7",
   },
   darkBackground: {
-    backgroundColor: "#111827",
+    backgroundColor: "#000000",
   },
   centeredContainer: {
     flex: 1,
@@ -3362,8 +3375,8 @@ const styles = StyleSheet.create({
     shadowRadius: 1,
   },
   darkHeader: {
-    backgroundColor: "#1F2937",
-    borderBottomColor: "#374151",
+    backgroundColor: "#1A1A1A",
+    borderBottomColor: "#333333",
   },
   headerTitle: {
     fontSize: 28,
@@ -3390,7 +3403,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   darkHeaderButton: {
-    backgroundColor: "#374151",
+    backgroundColor: "#333333",
   },
   statsContainer: {
     flexDirection: "row",
@@ -3406,7 +3419,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   darkStatsContainer: {
-    backgroundColor: "#1F2937",
+    backgroundColor: "#1A1A1A",
   },
   statItem: {
     alignItems: "center",
@@ -3430,8 +3443,8 @@ const styles = StyleSheet.create({
     borderBottomColor: "#E0E0E0",
   },
   darkSearchContainer: {
-    backgroundColor: "#1F2937",
-    borderBottomColor: "#374151",
+    backgroundColor: "#1A1A1A",
+    borderBottomColor: "#333333",
   },
   searchBar: {
     flexDirection: "row",
@@ -3442,7 +3455,7 @@ const styles = StyleSheet.create({
     height: 36,
   },
   darkSearchBar: {
-    backgroundColor: "#374151",
+    backgroundColor: "#333333",
   },
   searchIcon: {
     marginRight: 8,
@@ -3470,15 +3483,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 20,
-    shadowColor: "#000",
+    shadowColor: "#4A4A4A",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 2,
   },
   darkEmptyIconContainer: {
-    backgroundColor: "#1F2937",
-    shadowColor: "#000",
+    backgroundColor: "#1A1A1A",
+    shadowColor: "#000000",
   },
   emptyText: {
     fontSize: 22,
@@ -3494,19 +3507,19 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   emptyAddButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#4A4A4A",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 12,
-    shadowColor: "#007AFF",
+    shadowColor: "#4A4A4A",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 4,
   },
   darkEmptyAddButton: {
-    backgroundColor: "#3B82F6",
-    shadowColor: "#3B82F6",
+    backgroundColor: "#4A4A4A",
+    shadowColor: "#4A4A4A",
   },
   emptyAddButtonText: {
     color: "white",
@@ -3523,7 +3536,7 @@ const styles = StyleSheet.create({
     margin: 6,
     overflow: "hidden",
     elevation: 2,
-    shadowColor: "#000",
+    shadowColor: "#4A4A4A",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.07,
     shadowRadius: 8,
@@ -3531,8 +3544,8 @@ const styles = StyleSheet.create({
     height: 260,
   },
   darkBookCard: {
-    backgroundColor: "#1F2937",
-    shadowColor: "#000",
+    backgroundColor: "#1A1A1A",
+    shadowColor: "#000000",
   },
   coverContainer: {
     width: "100%",
@@ -3551,7 +3564,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   darkPlaceholderCover: {
-    backgroundColor: "#374151",
+    backgroundColor: "#333333",
   },
   progressBarContainer: {
     position: "absolute",
@@ -3650,6 +3663,7 @@ const styles = StyleSheet.create({
   webViewContainer: {
     flex: 1,
     backgroundColor: "#FFFFFF",
+    overflow: "auto",
   },
   webView: {
     flex: 1,
@@ -3736,7 +3750,7 @@ const styles = StyleSheet.create({
   quickMenuCloseButton: {
     margin: 16,
     padding: 12,
-    backgroundColor: "#007AFF",
+    backgroundColor: "#4A4A4A",
     borderRadius: 10,
     alignItems: "center",
   },
@@ -3788,7 +3802,7 @@ const styles = StyleSheet.create({
   },
   audioProgressBar: {
     height: "100%",
-    backgroundColor: "#007AFF",
+    backgroundColor: "#4A4A4A",
   },
   audioControls: {
     flexDirection: "row",
@@ -3848,7 +3862,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   aiSummaryButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#4A4A4A",
     padding: 10,
     borderRadius: 12,
     alignItems: "center",
@@ -3921,11 +3935,11 @@ const styles = StyleSheet.create({
     color: "#1C1C1E",
   },
   tocTextActive: {
-    color: "#007AFF",
+    color: "#4A4A4A",
     fontWeight: "600",
   },
   darkTocTextActive: {
-    color: "#0A84FF",
+    color: "#4A4A4A",
     fontWeight: "600",
   },
   settingsSection: {
@@ -3968,7 +3982,7 @@ const styles = StyleSheet.create({
   fontSizeButtonText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#007AFF",
+    color: "#4A4A4A",
   },
   fontSizeValue: {
     fontSize: 16,
@@ -4004,7 +4018,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f4ecd8",
   },
   activeThemeButton: {
-    borderColor: "#007AFF",
+    borderColor: "#4A4A4A",
     borderWidth: 2,
   },
   themeButtonText: {
@@ -4048,7 +4062,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   saveSummaryButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#4A4A4A",
     padding: 14,
     borderRadius: 12,
     alignItems: "center",
@@ -4086,7 +4100,7 @@ const styles = StyleSheet.create({
     borderColor: "#E0E0E0",
   },
   activeTransitionButton: {
-    borderColor: "#007AFF",
+    borderColor: "#4A4A4A",
     borderWidth: 2,
   },
   transitionButtonText: {
@@ -4094,7 +4108,7 @@ const styles = StyleSheet.create({
     color: "#1C1C1E",
   },
   activeTransitionText: {
-    color: "#007AFF",
+    color: "#4A4A4A",
     fontWeight: "600",
   },
   // New styles for search
@@ -4194,7 +4208,16 @@ const styles = StyleSheet.create({
   },
   tldrMenuContent: {
     padding: 16,
-    flex: 1, // Allow content to expand
+    flex: 1,
+  },
+  tldrTextContainer: {
+    flex: 1,
+    marginTop: 8,
+  },
+  tldrText: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: "#1C1C1E",
   },
   tldrMenuTitle: {
     fontSize: 17,
