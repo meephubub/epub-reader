@@ -1,5 +1,7 @@
 "use client";
 
+// Version 1.0.0
+
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { StatusBar } from "expo-status-bar";
 import {
@@ -418,7 +420,7 @@ const LibraryScreen = ({ navigation }) => {
             <Ionicons
               name={isDark ? "sunny" : "moon"}
               size={22}
-              color={isDark ? "#60A5FA" : "#4A4A4A"}
+              color={isDark ? "#000000" : "#4A4A4A"}
             />
           </TouchableOpacity>
           {books.length > 0 && (
@@ -429,7 +431,7 @@ const LibraryScreen = ({ navigation }) => {
               <Ionicons
                 name={showSearch ? "close" : "search"}
                 size={22}
-                color={isDark ? "#60A5FA" : "#4A4A4A"}
+                color={isDark ? "#000000" : "#4A4A4A"}
               />
             </TouchableOpacity>
           )}
@@ -440,7 +442,7 @@ const LibraryScreen = ({ navigation }) => {
             <Ionicons
               name="add"
               size={24}
-              color={isDark ? "#60A5FA" : "#4A4A4A"}
+              color={isDark ? "#000000" : "#4A4A4A"}
             />
           </TouchableOpacity>
         </View>
@@ -1890,7 +1892,7 @@ const ReaderScreen = ({ route, navigation }) => {
           position: relative;
           height: calc(100vh - 120px);
           width: 100%;
-          overflow: auto;
+          overflow: hidden;
           position: relative;
         }
         #book-content {
@@ -1909,7 +1911,7 @@ const ReaderScreen = ({ route, navigation }) => {
           flex: 0 0 100%;
           padding: 20px;
           box-sizing: border-box;
-          overflow: auto;
+          overflow: hidden;
           opacity: 1;
           transition: none;
           word-wrap: break-word;
@@ -1917,8 +1919,15 @@ const ReaderScreen = ({ route, navigation }) => {
           hyphens: auto;
           line-height: 1.6;
           text-align: justify;
-          overflow-y: auto;
-          -webkit-overflow-scrolling: touch;
+          overflow-y: hidden;
+          position: relative;
+          display: flex;
+          flex-direction: column;
+        }
+        .page-content {
+          flex: 1;
+          overflow: hidden;
+          position: relative;
         }
         .page * {
           max-width: 100%;
@@ -2245,7 +2254,10 @@ function paginateContent() {
     // Create at least one page with the raw content
     const fallbackPage = document.createElement('div');
     fallbackPage.className = 'page';
-    fallbackPage.innerHTML = rawContent;
+    const fallbackContent = document.createElement('div');
+    fallbackContent.className = 'page-content';
+    fallbackContent.innerHTML = rawContent;
+    fallbackPage.appendChild(fallbackContent);
     content.appendChild(fallbackPage);
   }
 
@@ -3663,10 +3675,12 @@ const styles = StyleSheet.create({
   webViewContainer: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    overflow: "auto",
+    overflow: "hidden",
+    padding: 6,
   },
   webView: {
     flex: 1,
+    overflow: "hidden",
   },
   tapZonesContainer: {
     position: "absolute",
