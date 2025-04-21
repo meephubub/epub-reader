@@ -713,6 +713,11 @@ const ReaderScreen = ({ route, navigation }) => {
   const [pageTransitionEffect, setPageTransitionEffect] = useState("slide");
   const [readingStartTime, setReadingStartTime] = useState(null);
   const readingTimer = useRef(null);
+  const [landmarks, setLandmarks] = useState([]);
+  const [pageList, setPageList] = useState([]);
+  const [navigationItems, setNavigationItems] = useState([]);
+  const [showLandmarks, setShowLandmarks] = useState(false);
+  const [showPageList, setShowPageList] = useState(false);
 
   // Start reading timer when component mounts
   useEffect(() => {
@@ -1004,15 +1009,15 @@ const ReaderScreen = ({ route, navigation }) => {
               {
                 role: "system",
                 content:
-                  "You are a helpful assistant that summarizes literature concisely.",
+                  "You are a helpful assistant that summarizes literature concisely. Summarize the following text in 1-2 sentences. Only return the summary — no extra commentary. Make it short and sweet:",
               },
               {
                 role: "user",
-                content: `Summarize the following text in 1-2 sentences. Only return the summary — no extra commentary. Make it short and sweet:\n\n${currentPageText}`,
+                content: `\n\n${currentPageText}`,
               },
             ],
             temperature: 0.7,
-            max_tokens: 150,
+            max_tokens: 500,
             top_p: 1,
             frequency_penalty: 0,
             presence_penalty: 0,
@@ -1031,10 +1036,10 @@ const ReaderScreen = ({ route, navigation }) => {
         throw new Error("Invalid response format from API");
       }
 
-      // Remove any text surrounded by <think> tags
+      // Remove any text surrounded by <Thinking> tags
       console.log("Summary generated", data.choices[0].message.content);
       const summary = data.choices[0].message.content
-        .replace(/<think>[\s\S]*?<\/think>/g, "") // Remove think tags and their content
+        .replace(/<Thinking>[\s\S]*?<\/think>/g, "") // Remove think tags and their content
         .trim();
 
       // Cache the summary
@@ -1466,36 +1471,166 @@ const ReaderScreen = ({ route, navigation }) => {
         // Parse OPF to find spine and manifest
         let chapterItems = [];
         let titles = [];
-        parseString(opfContent, (err, result) => {
-          if (err) throw err;
+        let navItems = [];
 
-          const manifest = result.package.manifest[0].item;
-          const spine = result.package.spine[0].itemref;
+        // First parse the OPF to get basic structure
+        const opfResult = await new Promise((resolve, reject) => {
+          parseString(opfContent, (err, result) => {
+            if (err) reject(err);
+            else resolve(result);
+          });
+        });
 
-          // Try to get chapter titles from the table of contents
-          try {
-            if (result.package.guide && result.package.guide[0].reference) {
-              const tocRef = result.package.guide[0].reference.find(
-                (ref) => ref.$["type"] === "toc",
-              );
+        const manifest = opfResult.package.manifest[0].item;
+        const spine = opfResult.package.spine[0].itemref;
 
-              if (tocRef) {
-                const tocPath = tocRef.$["href"];
-                const fullTocPath =
-                  opfPath.substring(0, opfPath.lastIndexOf("/")) +
-                  "/" +
-                  tocPath;
+        // First try to get navigation from EPUB 3 NavDoc
+        try {
+          const navItem = manifest.find(
+            (item) =>
+              item.$["properties"] && item.$["properties"].includes("nav"),
+          );
 
-                // We'll extract titles later from the TOC file
-                titles = Array(spine.length)
-                  .fill("")
-                  .map((_, i) => `Chapter ${i + 1}`);
+          if (navItem) {
+            const navPath = navItem.$["href"];
+            const opfDir = opfPath.substring(0, opfPath.lastIndexOf("/"));
+            const fullNavPath = `${opfDir}/${navPath}`;
+            const navFile = contents.file(fullNavPath);
+
+            if (navFile) {
+              const navContent = await navFile.async("text");
+
+              // Process the navigation document
+              // We need to parse the HTML to extract the navigation structure
+              const processNavContent = (content) => {
+                // Create a temporary DOM parser
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(content, "text/html");
+
+                // Function to recursively process navigation items
+                const processNavItems = (items, level = 0, parent = null) => {
+                  return Array.from(items)
+                    .map((item) => {
+                      const link = item.querySelector("a");
+                      const subList = item.querySelector("ol");
+
+                      if (!link) return null;
+
+                      const href = link.getAttribute("href");
+                      const title = link.textContent.trim();
+
+                      const result = {
+                        id: Math.random().toString(36).substring(2, 9),
+                        title,
+                        href,
+                        level,
+                        parent,
+                        children: [],
+                      };
+
+                      if (subList) {
+                        result.children = processNavItems(
+                          subList.querySelectorAll("li"),
+                          level + 1,
+                          result.id,
+                        ).filter(Boolean);
+                      }
+
+                      return result;
+                    })
+                    .filter(Boolean);
+                };
+
+                // Process TOC navigation
+                const tocNav = doc.querySelector('nav[*|type="toc"]');
+                let tocItems = [];
+
+                if (tocNav) {
+                  const ol = tocNav.querySelector("ol");
+                  if (ol) {
+                    tocItems = processNavItems(ol.querySelectorAll("li"));
+                  }
+                }
+
+                // Process landmarks navigation
+                const landmarksNav = doc.querySelector(
+                  'nav[*|type="landmarks"]',
+                );
+                let landmarkItems = [];
+
+                if (landmarksNav) {
+                  const ol = landmarksNav.querySelector("ol");
+                  if (ol) {
+                    landmarkItems = processNavItems(ol.querySelectorAll("li"));
+                  }
+                }
+
+                // Process page list navigation
+                const pageListNav = doc.querySelector(
+                  'nav[*|type="page-list"]',
+                );
+                let pageListItems = [];
+
+                if (pageListNav) {
+                  const ol = pageListNav.querySelector("ol");
+                  if (ol) {
+                    pageListItems = processNavItems(ol.querySelectorAll("li"));
+                  }
+                }
+
+                return {
+                  toc: tocItems,
+                  landmarks: landmarkItems,
+                  pageList: pageListItems,
+                };
+              };
+
+              // Process the navigation content
+              const navData = processNavContent(navContent);
+
+              // Set the navigation items
+              if (navData.toc.length > 0) {
+                navItems = navData.toc;
+                // Extract flat titles for backward compatibility
+                titles = flattenNavItems(navData.toc);
               }
-            }
-          } catch (e) {
-            console.warn("Could not extract TOC:", e);
-          }
 
+              // Set landmarks and page list
+              if (navData.landmarks.length > 0) {
+                setLandmarks(navData.landmarks);
+              }
+
+              if (navData.pageList.length > 0) {
+                setPageList(navData.pageList);
+              }
+
+              // Set the navigation items for the TOC
+              setNavigationItems(navData.toc);
+            }
+          }
+        } catch (error) {
+          console.warn("Failed to parse EPUB3 navdoc:", error);
+        }
+
+        // Helper function to flatten navigation items for backward compatibility
+        const flattenNavItems = (items) => {
+          const result = [];
+
+          const flatten = (items, indent = "") => {
+            items.forEach((item) => {
+              result.push(`${indent}${item.title}`);
+              if (item.children && item.children.length > 0) {
+                flatten(item.children, `${indent}  `);
+              }
+            });
+          };
+
+          flatten(items);
+          return result;
+        };
+
+        // If no EPUB3 navdoc was found or it failed, fall back to spine-based navigation
+        if (navItems.length === 0) {
           // Map spine items to their content files
           chapterItems = spine
             .map((item, index) => {
@@ -1503,11 +1638,13 @@ const ReaderScreen = ({ route, navigation }) => {
               const manifestItem = manifest.find((m) => m.$["id"] === idRef);
               return {
                 href: manifestItem ? manifestItem.$["href"] : null,
-                title: titles[index] || `Chapter ${index + 1}`,
+                title: `Chapter ${index + 1}`,
               };
             })
             .filter((item) => item.href);
-        });
+
+          titles = chapterItems.map((item) => item.title);
+        }
 
         // Resolve paths relative to OPF file
         const opfDir = opfPath.substring(0, opfPath.lastIndexOf("/"));
@@ -1732,6 +1869,80 @@ const ReaderScreen = ({ route, navigation }) => {
     saveProgress(index, 0, totalPages);
   };
 
+  // New function to handle navigation to a specific item in the TOC
+  const handleNavigationItemSelect = (item) => {
+    // Find the chapter index based on the href
+    const chapterIndex = navigationItems.findIndex(
+      (navItem) =>
+        navItem.href === item.href ||
+        navItem.children.some((child) => child.href === item.href),
+    );
+
+    if (chapterIndex !== -1) {
+      handleChapterChange(chapterIndex);
+    } else {
+      // If we can't find the exact chapter, try to find the closest match
+      const opfDir = book.uri.substring(0, book.uri.lastIndexOf("/"));
+      const itemPath = `${opfDir}/${item.href}`;
+
+      // Find the chapter that contains this path
+      for (let i = 0; i < chapters.length; i++) {
+        if (chapters[i].includes(itemPath)) {
+          handleChapterChange(i);
+          break;
+        }
+      }
+    }
+
+    setShowToc(false);
+  };
+
+  // New function to handle navigation to a landmark
+  const handleLandmarkSelect = (landmark) => {
+    // Similar to navigation item select but for landmarks
+    const href = landmark.href.split("#")[0]; // Remove fragment
+
+    // Find the chapter that contains this href
+    for (let i = 0; i < chapters.length; i++) {
+      if (chapters[i].includes(href)) {
+        handleChapterChange(i);
+        break;
+      }
+    }
+
+    setShowLandmarks(false);
+  };
+
+  // New function to handle navigation to a specific page
+  const handlePageSelect = (pageItem) => {
+    // Similar to landmark select but for page list
+    const href = pageItem.href.split("#")[0]; // Remove fragment
+
+    // Find the chapter that contains this href
+    for (let i = 0; i < chapters.length; i++) {
+      if (chapters[i].includes(href)) {
+        handleChapterChange(i);
+
+        // If there's a fragment, try to scroll to it
+        const fragment = pageItem.href.split("#")[1];
+        if (fragment) {
+          webViewRef.current?.injectJavaScript(`
+            setTimeout(() => {
+              const element = document.getElementById('${fragment}');
+              if (element) {
+                element.scrollIntoView();
+              }
+            }, 500);
+            true;
+          `);
+        }
+        break;
+      }
+    }
+
+    setShowPageList(false);
+  };
+
   const handleFontSizeChange = (size) => {
     // Trigger haptic feedback
     if (Platform.OS === "ios") {
@@ -1833,7 +2044,7 @@ const ReaderScreen = ({ route, navigation }) => {
     <html>
     <head>
       <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
       <style>
         html, body {
           margin: 0;
@@ -2110,7 +2321,7 @@ function paginateContent() {
 
   // Create a temporary container to measure content
   const tempContainer = document.createElement('div');
-  tempContainer.style.width = contentWrapper.offsetWidth + 'px';
+  tempContainer.style.width = '100%';
   tempContainer.style.position = 'absolute';
   tempContainer.style.visibility = 'hidden';
   tempContainer.style.padding = '0 20px';
@@ -2118,6 +2329,10 @@ function paginateContent() {
   tempContainer.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
   tempContainer.style.fontSize = '${fontSize}%';
   tempContainer.style.lineHeight = '1.6';
+  tempContainer.style.wordWrap = 'break-word';
+  tempContainer.style.overflowWrap = 'break-word';
+  tempContainer.style.hyphens = 'auto';
+  tempContainer.style.maxWidth = '100%';
   document.body.appendChild(tempContainer);
 
   // Parse the HTML content
@@ -2150,6 +2365,13 @@ function paginateContent() {
   // Create pages
   let currentPage = document.createElement('div');
   currentPage.className = 'page';
+  currentPage.style.width = '100%';
+  currentPage.style.padding = '20px';
+  currentPage.style.boxSizing = 'border-box';
+  currentPage.style.wordWrap = 'break-word';
+  currentPage.style.overflowWrap = 'break-word';
+  currentPage.style.hyphens = 'auto';
+  currentPage.style.maxWidth = '100%';
   content.appendChild(currentPage);
 
   let pageHeight = contentWrapper.offsetHeight - 40; // Subtract padding
@@ -2166,6 +2388,10 @@ function paginateContent() {
 
     // Clone the element to measure it
     const clonedElement = element.cloneNode(true);
+    clonedElement.style.wordWrap = 'break-word';
+    clonedElement.style.overflowWrap = 'break-word';
+    clonedElement.style.hyphens = 'auto';
+    clonedElement.style.maxWidth = '100%';
     tempContainer.appendChild(clonedElement);
     const elementHeight = clonedElement.offsetHeight;
     tempContainer.removeChild(clonedElement);
@@ -2176,16 +2402,35 @@ function paginateContent() {
       if (currentHeight > 0) {
         currentPage = document.createElement('div');
         currentPage.className = 'page';
+        currentPage.style.width = '100%';
+        currentPage.style.padding = '20px';
+        currentPage.style.boxSizing = 'border-box';
+        currentPage.style.wordWrap = 'break-word';
+        currentPage.style.overflowWrap = 'break-word';
+        currentPage.style.hyphens = 'auto';
+        currentPage.style.maxWidth = '100%';
         content.appendChild(currentPage);
         currentHeight = 0;
       }
 
       // Add the large element to its own page
-      currentPage.appendChild(element.cloneNode(true));
+      const clonedLargeElement = element.cloneNode(true);
+      clonedLargeElement.style.wordWrap = 'break-word';
+      clonedLargeElement.style.overflowWrap = 'break-word';
+      clonedLargeElement.style.hyphens = 'auto';
+      clonedLargeElement.style.maxWidth = '100%';
+      currentPage.appendChild(clonedLargeElement);
 
       // Create a new page for subsequent content
       currentPage = document.createElement('div');
       currentPage.className = 'page';
+      currentPage.style.width = '100%';
+      currentPage.style.padding = '20px';
+      currentPage.style.boxSizing = 'border-box';
+      currentPage.style.wordWrap = 'break-word';
+      currentPage.style.overflowWrap = 'break-word';
+      currentPage.style.hyphens = 'auto';
+      currentPage.style.maxWidth = '100%';
       content.appendChild(currentPage);
       currentHeight = 0;
       continue;
@@ -2205,6 +2450,13 @@ function paginateContent() {
         // Create a new page for the rest
         currentPage = document.createElement('div');
         currentPage.className = 'page';
+        currentPage.style.width = '100%';
+        currentPage.style.padding = '20px';
+        currentPage.style.boxSizing = 'border-box';
+        currentPage.style.wordWrap = 'break-word';
+        currentPage.style.overflowWrap = 'break-word';
+        currentPage.style.hyphens = 'auto';
+        currentPage.style.maxWidth = '100%';
         content.appendChild(currentPage);
         currentHeight = 0;
 
@@ -2229,6 +2481,13 @@ function paginateContent() {
         // Create a new page for non-paragraph elements
         currentPage = document.createElement('div');
         currentPage.className = 'page';
+        currentPage.style.width = '100%';
+        currentPage.style.padding = '20px';
+        currentPage.style.boxSizing = 'border-box';
+        currentPage.style.wordWrap = 'break-word';
+        currentPage.style.overflowWrap = 'break-word';
+        currentPage.style.hyphens = 'auto';
+        currentPage.style.maxWidth = '100%';
         content.appendChild(currentPage);
         currentHeight = 0;
 
@@ -3041,23 +3300,23 @@ function paginateContent() {
                   "Swipe down to generate a summary of the current page."}
               </Text>
             </ScrollView>
-          </View>
-          <TouchableOpacity
-            style={[
-              styles.quickMenuCloseButton,
-              readerTheme === "dark" && styles.darkButton,
-            ]}
-            onPress={hideTldrMenuHandler}
-          >
-            <Text
+            <TouchableOpacity
               style={[
-                styles.quickMenuCloseText,
-                readerTheme === "dark" && { color: "#FFFFFF" },
+                styles.quickMenuCloseButton,
+                readerTheme === "dark" && styles.darkButton,
               ]}
+              onPress={hideTldrMenuHandler}
             >
-              Close
-            </Text>
-          </TouchableOpacity>
+              <Text
+                style={[
+                  styles.quickMenuCloseText,
+                  readerTheme === "dark" && { color: "#FFFFFF" },
+                ]}
+              >
+                Close
+              </Text>
+            </TouchableOpacity>
+          </View>
         </Animated.View>
       )}
 
@@ -3136,7 +3395,7 @@ function paginateContent() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Table of Contents Modal */}
+      {/* Table of Contents Modal with EPUB3 Navigation Support */}
       <Modal
         visible={showToc}
         transparent={true}
@@ -3173,34 +3432,182 @@ function paginateContent() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.tocList}>
-              {chapterTitles.map((title, index) => (
+            {/* Navigation Tabs */}
+            <View style={styles.navigationTabs}>
+              <TouchableOpacity
+                style={[
+                  styles.navigationTab,
+                  !showLandmarks && !showPageList && styles.activeNavigationTab,
+                ]}
+                onPress={() => {
+                  setShowLandmarks(false);
+                  setShowPageList(false);
+                }}
+              >
+                <Text style={styles.navigationTabText}>Table of Contents</Text>
+              </TouchableOpacity>
+
+              {landmarks.length > 0 && (
                 <TouchableOpacity
-                  key={index}
                   style={[
-                    styles.tocItem,
-                    currentChapter === index &&
-                      (readerTheme === "dark"
-                        ? styles.darkTocItemActive
-                        : styles.tocItemActive),
+                    styles.navigationTab,
+                    showLandmarks && styles.activeNavigationTab,
                   ]}
-                  onPress={() => handleChapterChange(index)}
+                  onPress={() => {
+                    setShowLandmarks(true);
+                    setShowPageList(false);
+                  }}
                 >
-                  <Text
-                    style={[
-                      styles.tocText,
-                      readerTheme === "dark" && styles.darkText,
-                      currentChapter === index &&
-                        (readerTheme === "dark"
-                          ? styles.darkTocTextActive
-                          : styles.tocTextActive),
-                    ]}
-                  >
-                    {title}
-                  </Text>
+                  <Text style={styles.navigationTabText}>Landmarks</Text>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              )}
+
+              {pageList.length > 0 && (
+                <TouchableOpacity
+                  style={[
+                    styles.navigationTab,
+                    showPageList && styles.activeNavigationTab,
+                  ]}
+                  onPress={() => {
+                    setShowLandmarks(false);
+                    setShowPageList(true);
+                  }}
+                >
+                  <Text style={styles.navigationTabText}>Pages</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Table of Contents View */}
+            {!showLandmarks && !showPageList && (
+              <ScrollView style={styles.tocList}>
+                {navigationItems.length > 0
+                  ? // Render hierarchical navigation
+                    navigationItems.map((item) => (
+                      <View key={item.id}>
+                        <TouchableOpacity
+                          style={[
+                            styles.tocItem,
+                            { paddingLeft: 20 + item.level * 20 },
+                            currentChapter === navigationItems.indexOf(item) &&
+                              (readerTheme === "dark"
+                                ? styles.darkTocItemActive
+                                : styles.tocItemActive),
+                          ]}
+                          onPress={() => handleNavigationItemSelect(item)}
+                        >
+                          <Text
+                            style={[
+                              styles.tocText,
+                              readerTheme === "dark" && styles.darkText,
+                              currentChapter ===
+                                navigationItems.indexOf(item) &&
+                                (readerTheme === "dark"
+                                  ? styles.darkTocTextActive
+                                  : styles.tocTextActive),
+                            ]}
+                          >
+                            {item.title}
+                          </Text>
+                        </TouchableOpacity>
+
+                        {/* Render sub-items */}
+                        {item.children &&
+                          item.children.map((child) => (
+                            <TouchableOpacity
+                              key={child.id}
+                              style={[
+                                styles.tocItem,
+                                { paddingLeft: 20 + child.level * 20 },
+                              ]}
+                              onPress={() => handleNavigationItemSelect(child)}
+                            >
+                              <Text
+                                style={[
+                                  styles.tocText,
+                                  readerTheme === "dark" && styles.darkText,
+                                  { fontSize: 14 },
+                                ]}
+                              >
+                                {child.title}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                      </View>
+                    ))
+                  : // Fallback to flat chapter list
+                    chapterTitles.map((title, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={[
+                          styles.tocItem,
+                          currentChapter === index &&
+                            (readerTheme === "dark"
+                              ? styles.darkTocItemActive
+                              : styles.tocItemActive),
+                        ]}
+                        onPress={() => handleChapterChange(index)}
+                      >
+                        <Text
+                          style={[
+                            styles.tocText,
+                            readerTheme === "dark" && styles.darkText,
+                            currentChapter === index &&
+                              (readerTheme === "dark"
+                                ? styles.darkTocTextActive
+                                : styles.tocTextActive),
+                          ]}
+                        >
+                          {title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+              </ScrollView>
+            )}
+
+            {/* Landmarks View */}
+            {showLandmarks && (
+              <ScrollView style={styles.tocList}>
+                {landmarks.map((landmark, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.tocItem}
+                    onPress={() => handleLandmarkSelect(landmark)}
+                  >
+                    <Text
+                      style={[
+                        styles.tocText,
+                        readerTheme === "dark" && styles.darkText,
+                      ]}
+                    >
+                      {landmark.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
+            {/* Page List View */}
+            {showPageList && (
+              <ScrollView style={styles.tocList}>
+                {pageList.map((page, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.tocItem}
+                    onPress={() => handlePageSelect(page)}
+                  >
+                    <Text
+                      style={[
+                        styles.tocText,
+                        readerTheme === "dark" && styles.darkText,
+                      ]}
+                    >
+                      {page.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
 
             <View
               style={[
@@ -3632,7 +4039,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     textAlign: "center",
   },
-  // Keep all other styles...
+  // Reader screen styles
   readerContainer: {
     flex: 1,
     backgroundColor: "#FFFFFF",
@@ -3664,9 +4071,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     flex: 1,
     marginHorizontal: 8,
-  },
-  darkText: {
-    color: "#FFFFFF",
   },
   tocButton: {
     padding: 8,
@@ -4239,5 +4643,26 @@ const styles = StyleSheet.create({
     color: "#000000",
     marginBottom: 16,
     textAlign: "center",
+  },
+  // New styles for EPUB3 navigation
+  navigationTabs: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+    marginBottom: 8,
+  },
+  navigationTab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  activeNavigationTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: "#4A4A4A",
+  },
+  navigationTabText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#4A4A4A",
   },
 });
